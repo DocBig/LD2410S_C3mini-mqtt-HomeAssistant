@@ -128,10 +128,9 @@ Das ist der einfachste Weg, ein falsch konfiguriertes Gerät ohne PC zurückzuse
 
 - [`doc/INSTALLATION.md`](doc/INSTALLATION.md) – Schritt-für-Schritt: Verdrahtung, Flashen, Ersteinrichtung
 - [`doc/README_PARAMETER.md`](doc/README_PARAMETER.md) – Alle Einstellungen und Parameter erklärt
-- [`doc/HOME_ASSISTANT_DASHBOARD.md`](doc/HOME_ASSISTANT_DASHBOARD.md) – Dashboard-Vorlage einrichten
+
 
 ---
 
 ## Lizenz
-
-MIT
+- [`LICENSE`](LICENSE) - MIT

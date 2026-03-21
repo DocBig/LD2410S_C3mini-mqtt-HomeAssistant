@@ -3,9 +3,9 @@
 
 Firmware für den ESP32-C3 mit HLK-LD2410S Radar-Sensor. Das Gerät erkennt Personen im Raum, misst den Abstand und meldet alles automatisch an Home Assistant – ohne manuelle Konfiguration dort.
 
-Die Einrichtung erfolgt einmalig über ein integriertes Web-Portal. Danach ist das Gerät vollständig über Home Assistant steuerbar.
-
 ![Example Display](images/autodiscover.jpg)
+
+Die Einrichtung erfolgt einmalig über ein integriertes Web-Portal. Danach ist das Gerät vollständig über Home Assistant steuerbar.
 
 ---
 

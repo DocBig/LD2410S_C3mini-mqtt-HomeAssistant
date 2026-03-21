@@ -82,7 +82,7 @@ Falls der Flash nicht startet:
 
 ---
 
-### alternativ Methode A1: Browser 
+### alternativ Methode B: Browser 
 
 1. ESP32-C3 per USB mit dem Computer verbinden
 2. Im Browser öffnen: **https://espressif.github.io/esptool-js/**

@@ -1,5 +1,5 @@
 # LD2410S C3 Mini MQTT
-![License](https://img.shields.io/badge/license-MIT-blue.svg)! [Platform](https://img.shields.io/badge/platform-ESP32-orange.svg)! [Framework](https://img.shields.io/badge/framework-Arduino-green.svg)! [Protocol](https://img.shields.io/badge/protocol-MQTT-purple.svg)! [Home Assistant](https://img.shields.io/badge/Home%20Assistant-auto%20discovery-41BDF5)
+![License](https://img.shields.io/badge/license-MIT-blue.svg)  ![Platform](https://img.shields.io/badge/platform-ESP32-orange.svg). ![Framework](https://img.shields.io/badge/framework-Arduino-green.svg)  ![Protocol](https://img.shields.io/badge/protocol-MQTT-purple.svg)  ![Home Assistant](https://img.shields.io/badge/Home%20Assistant-auto%20discovery-41BDF5)
 
 Firmware für den ESP32-C3 mit HLK-LD2410S Radar-Sensor. Das Gerät erkennt Personen im Raum, misst den Abstand und meldet alles automatisch an Home Assistant – ohne manuelle Konfiguration dort.
 

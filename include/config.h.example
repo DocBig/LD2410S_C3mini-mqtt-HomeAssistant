@@ -1,0 +1,23 @@
+#pragma once
+
+// Copy this file to config.h and fill in your values.
+
+#define WIFI_SSID "your-wifi-ssid"
+#define WIFI_PASSWORD "your-wifi-password"
+
+#define MQTT_HOST "192.168.1.10"
+#define MQTT_PORT 1883
+#define MQTT_USER ""
+#define MQTT_PASSWORD ""
+#define MQTT_CLIENT_ID "ld2410s-c3mini"
+#define MQTT_TOPIC_PREFIX "sensors/ld2410s"
+
+// LOLIN C3 Mini wiring:
+// ESP GPIO7 <- Sensor OT1/TX
+// ESP GPIO6 -> Sensor RX
+#define LD2410S_RX_PIN 7
+#define LD2410S_TX_PIN 6
+#define LD2410S_BAUD 115200
+
+// How often to publish JSON state, in milliseconds.
+#define PUBLISH_INTERVAL_MS 1000

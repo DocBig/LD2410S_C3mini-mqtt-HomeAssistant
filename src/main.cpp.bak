@@ -1,0 +1,558 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <esp_wifi.h>
+#include <ArduinoOTA.h>
+#include <PubSubClient.h>
+#include "config.h"
+#include "config_manager.h"
+#include "ap_portal.h"
+#include "LD2410S.h"
+
+// Boot button on LOLIN C3 Mini
+static const uint8_t  BOOT_BUTTON_PIN     = 9;
+static const uint32_t BOOT_BUTTON_HOLD_MS = 3000;
+
+// LOLIN C3 Mini onboard LED — pin is runtime-configurable via AP portal.
+// Default is GPIO8 (simple blue LED, active HIGH). Change in the portal
+// under "LED-Pin" if your board uses a different pin.
+
+// WiFi connection: timeout per attempt and max retries before AP fallback
+static const uint32_t WIFI_CONNECT_TIMEOUT_MS = 30000;
+static const uint8_t  WIFI_MAX_RETRIES        = 3;
+
+// MQTT: max consecutive connection failures before opening AP portal
+static const uint8_t  MQTT_MAX_RETRIES        = 10;
+
+LD2410S              sensor;
+WiFiClient           wifiClient;
+PubSubClient         mqttClient(wifiClient);
+
+static AppConfig     cfg;
+unsigned long        lastPublish      = 0;
+bool                 streamingStarted = false;
+bool                 otaInProgress    = false;
+bool                 lastPresence     = false;  // track state changes for immediate publish
+
+// ---------------------------------------------------------------------------
+// LED helpers (simple active-HIGH GPIO LED)
+// ---------------------------------------------------------------------------
+
+static void ledOn()  { digitalWrite(cfg.ledPin, HIGH); }
+static void ledOff() { digitalWrite(cfg.ledPin, LOW);  }
+
+static void ledOk()         { ledOn(); }
+static void ledConnecting() { ledOff(); }
+static void ledError()      { ledOn(); }   // solid on for errors
+static void ledOta()        { ledOn(); }
+static void ledPresence()   { /* handled inline with brief flash */ }
+
+// Attempts to connect to WiFi once. Returns true on success, false on timeout.
+static bool tryConnectWiFi(bool useStaticIp) {
+  WiFi.disconnect(true);
+  delay(100);
+  WiFi.mode(WIFI_STA);
+
+  if (useStaticIp && cfg.cachedIp != 0) {
+    WiFi.config(IPAddress(cfg.cachedIp),
+                IPAddress(cfg.cachedGateway),
+                IPAddress(cfg.cachedSubnet),
+                IPAddress(cfg.cachedDns));
+  }
+
+  if (cfg.wifiHidden) {
+    // For hidden SSIDs the router won't beacon its SSID, so we must scan all
+    // channels with a directed probe. Setting WIFI_ALL_CHANNEL_SCAN ensures
+    // the driver does a full active scan before associating.
+    wifi_config_t conf{};
+    strlcpy(reinterpret_cast<char *>(conf.sta.ssid),     cfg.wifiSsid,     sizeof(conf.sta.ssid));
+    strlcpy(reinterpret_cast<char *>(conf.sta.password), cfg.wifiPassword, sizeof(conf.sta.password));
+    conf.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+    esp_wifi_set_config(WIFI_IF_STA, &conf);
+    esp_wifi_connect();
+  } else {
+    WiFi.begin(cfg.wifiSsid, cfg.wifiPassword);
+  }
+
+  const uint32_t deadline = millis() + WIFI_CONNECT_TIMEOUT_MS;
+  while (WiFi.status() != WL_CONNECTED) {
+    if (millis() > deadline) return false;
+    delay(500);
+  }
+  return true;
+}
+
+static void connectWiFi() {
+  if (WiFi.status() == WL_CONNECTED) return;
+  Serial.println("[WiFi] Connecting...");
+  ledConnecting();
+
+  // First attempt: use cached static IP for a faster reconnect.
+  bool usedStaticIp = (cfg.cachedIp != 0);
+  if (usedStaticIp && tryConnectWiFi(true)) {
+    saveIpCache((uint32_t)WiFi.localIP(),
+                (uint32_t)WiFi.gatewayIP(),
+                (uint32_t)WiFi.subnetMask(),
+                (uint32_t)WiFi.dnsIP());
+    cfg.cachedIp      = (uint32_t)WiFi.localIP();
+    cfg.cachedGateway = (uint32_t)WiFi.gatewayIP();
+    cfg.cachedSubnet  = (uint32_t)WiFi.subnetMask();
+    cfg.cachedDns     = (uint32_t)WiFi.dnsIP();
+    Serial.printf("[WiFi] Connected (cached IP) → %s\n", WiFi.localIP().toString().c_str());
+    return;
+  }
+
+  // Static IP failed (or no cache) — clear cache and fall back to DHCP.
+  // Reset the static IP config by disconnecting; tryConnectWiFi(false) will
+  // call WiFi.begin() without a prior WiFi.config(), letting the stack use DHCP.
+  if (usedStaticIp) {
+    clearIpCache();
+    cfg.cachedIp = 0;
+    WiFi.disconnect(true);
+    delay(100);
+  }
+
+  uint8_t retries = 0;
+  while (!tryConnectWiFi(false)) {
+    retries++;
+    if (retries >= WIFI_MAX_RETRIES) {
+      // Cannot reach the configured network — open AP portal so the user can
+      // correct the credentials without needing a serial connection.
+      runAPPortal(cfg); // never returns; restarts after save
+    }
+  }
+
+  // DHCP succeeded — cache the new lease.
+  saveIpCache((uint32_t)WiFi.localIP(),
+              (uint32_t)WiFi.gatewayIP(),
+              (uint32_t)WiFi.subnetMask(),
+              (uint32_t)WiFi.dnsIP());
+  cfg.cachedIp      = (uint32_t)WiFi.localIP();
+  cfg.cachedGateway = (uint32_t)WiFi.gatewayIP();
+  cfg.cachedSubnet  = (uint32_t)WiFi.subnetMask();
+  cfg.cachedDns     = (uint32_t)WiFi.dnsIP();
+  Serial.printf("[WiFi] Connected (DHCP) → %s\n", WiFi.localIP().toString().c_str());
+}
+
+static void connectMqtt() {
+  if (mqttClient.connected()) return;
+  ledConnecting();
+
+  uint8_t retries = 0;
+  while (!mqttClient.connected()) {
+    bool ok = strlen(cfg.mqttUser) == 0
+                  ? mqttClient.connect(cfg.mqttClientId)
+                  : mqttClient.connect(cfg.mqttClientId, cfg.mqttUser, cfg.mqttPassword);
+
+    if (!ok) {
+      Serial.printf("[MQTT] connect failed, state=%d (retry %u/%u)\n",
+                    mqttClient.state(), retries + 1, MQTT_MAX_RETRIES);
+      retries++;
+      if (retries >= MQTT_MAX_RETRIES) {
+        Serial.println("[MQTT] max retries reached — opening AP portal to fix settings");
+        runAPPortal(cfg); // never returns; restarts after save
+      }
+      delay(1000);
+    } else {
+      Serial.printf("[MQTT] Connected to %s:%u as '%s'\n",
+                    cfg.mqttHost, cfg.mqttPort, cfg.mqttClientId);
+      // Subscribe to command topic
+      String cmdTopic = String(cfg.mqttTopicPrefix) + "/cmd";
+      mqttClient.subscribe(cmdTopic.c_str());
+      ledOk();
+    }
+  }
+}
+
+static bool startStreamingSafely() {
+  // Enter config mode cleanly before issuing any config commands.
+  // The README warns that config commands are unreliable while streaming.
+  if (!sensor.stopStreaming()) {
+    Serial.println("[Sensor] stopStreaming failed");
+    return false;
+  }
+
+  LD2410S_GenericParams params{};
+  if (!sensor.readGenericParams(params)) {
+    Serial.println("[Sensor] readGenericParams failed");
+    return false;
+  }
+
+  // Apply configured detection parameters
+  params.farthestGate      = cfg.sensorFarthestGate;
+  params.nearestGate       = cfg.sensorNearestGate;
+  params.unmannedDelay_s   = cfg.sensorUnmannedDelay;
+  params.responseSpeed     = cfg.sensorResponseSpeed;
+  // Ensure frequencies are set so the sensor sends standard frames.
+  if (params.statusReportFreq < 0.5f)   params.statusReportFreq   = 1.0f;
+  if (params.distanceReportFreq < 0.5f) params.distanceReportFreq = 1.0f;
+
+  if (!sensor.writeGenericParams(params)) {
+    Serial.println("[Sensor] writeGenericParams failed");
+    return false;
+  }
+  Serial.printf("[Sensor] Params applied — farGate=%u nearGate=%u delay=%us speed=%u freq=%.1fHz\n",
+                params.farthestGate, params.nearestGate,
+                params.unmannedDelay_s, params.responseSpeed, params.statusReportFreq);
+
+  // switchOutputMode changes minimal→standard frames (gate energy data).
+  // Give the sensor extra time to settle after writeGenericParams endConfig.
+  delay(500);
+  bool modeOk = false;
+  for (uint8_t attempt = 0; attempt < 3 && !modeOk; attempt++) {
+    modeOk = sensor.switchOutputMode(true);
+    if (!modeOk) {
+      Serial.printf("[Sensor] switchOutputMode attempt %u/3 failed, retrying...\n", attempt + 1);
+      delay(300);
+    }
+  }
+  if (modeOk) {
+    Serial.println("[Sensor] Standard mode attempted (sensor may ignore on FW 1.1.x)");
+  } else {
+    Serial.println("[Sensor] switchOutputMode unsupported — gate energy unavailable");
+  }
+
+  sensor.startStreaming();
+  Serial.println("[Sensor] Streaming started OK");
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// MQTT command handler
+// ---------------------------------------------------------------------------
+
+static void onMqttMessage(const char *topic, byte *payload, unsigned int length) {
+  if (length == 0 || length > 127) return;
+
+  char msg[128];
+  memcpy(msg, payload, length);
+  msg[length] = '\0';
+  Serial.printf("[MQTT cmd] topic=%s msg=%s\n", topic, msg);
+
+  const String ackTopic = String(cfg.mqttTopicPrefix) + "/cmd/ack";
+  const String cmdTopic = String(cfg.mqttTopicPrefix) + "/cmd";
+  if (String(topic) != cmdTopic) return;
+
+  if (strcmp(msg, "restart") == 0) {
+    mqttClient.publish(ackTopic.c_str(), "restarting");
+    delay(200);
+    ESP.restart();
+
+  } else if (strcmp(msg, "reset_config") == 0) {
+    mqttClient.publish(ackTopic.c_str(), "config reset — entering AP portal");
+    delay(200);
+    resetConfig();
+    ESP.restart();
+
+  } else if (strcmp(msg, "sensor_reset") == 0) {
+    bool ok = sensor.factoryReset();
+    mqttClient.publish(ackTopic.c_str(), ok ? "sensor factory reset OK" : "sensor factory reset FAILED");
+    if (ok) {
+      delay(500);
+      streamingStarted = false; // force re-init in loop()
+    }
+
+  } else if (strcmp(msg, "auto_threshold") == 0) {
+    bool ok = sensor.startAutoThreshold(2, 1, 120);
+    mqttClient.publish(ackTopic.c_str(), ok ? "auto threshold started (120s)" : "auto threshold FAILED");
+
+  } else if (strcmp(msg, "get_params") == 0) {
+    LD2410S_GenericParams p{};
+    if (sensor.readGenericParams(p)) {
+      char buf[200];
+      snprintf(buf, sizeof(buf),
+               "{\"farthestGate\":%u,\"nearestGate\":%u,\"unmannedDelay\":%u,\"responseSpeed\":%u}",
+               p.farthestGate, p.nearestGate, p.unmannedDelay_s, p.responseSpeed);
+      mqttClient.publish((String(cfg.mqttTopicPrefix) + "/params").c_str(), buf, true);
+      mqttClient.publish(ackTopic.c_str(), "params published");
+    } else {
+      mqttClient.publish(ackTopic.c_str(), "get_params FAILED");
+    }
+
+  } else if (strncmp(msg, "set_params ", 11) == 0) {
+    // Simple key=value parsing: set_params farGate=8 nearGate=0 delay=15 speed=5
+    uint8_t  farGate  = cfg.sensorFarthestGate;
+    uint8_t  nearGate = cfg.sensorNearestGate;
+    uint16_t delay_s  = cfg.sensorUnmannedDelay;
+    uint8_t  speed    = cfg.sensorResponseSpeed;
+    sscanf(msg + 11, "farGate=%hhu nearGate=%hhu delay=%hu speed=%hhu",
+           &farGate, &nearGate, &delay_s, &speed);
+
+    LD2410S_GenericParams p{};
+    if (sensor.readGenericParams(p)) {
+      p.farthestGate    = farGate;
+      p.nearestGate     = nearGate;
+      p.unmannedDelay_s = delay_s;
+      p.responseSpeed   = speed;
+      if (sensor.writeGenericParams(p)) {
+        cfg.sensorFarthestGate  = farGate;
+        cfg.sensorNearestGate   = nearGate;
+        cfg.sensorUnmannedDelay = delay_s;
+        cfg.sensorResponseSpeed = speed;
+        saveConfig(cfg);
+        mqttClient.publish(ackTopic.c_str(), "params updated and saved");
+      } else {
+        mqttClient.publish(ackTopic.c_str(), "writeGenericParams FAILED");
+      }
+    } else {
+      mqttClient.publish(ackTopic.c_str(), "readGenericParams FAILED");
+    }
+
+  } else if (strcmp(msg, "debug_on") == 0) {
+    sensor.setDebug(true);
+    mqttClient.publish(ackTopic.c_str(), "sensor debug enabled — check serial output");
+
+  } else if (strcmp(msg, "debug_off") == 0) {
+    sensor.setDebug(false);
+    mqttClient.publish(ackTopic.c_str(), "sensor debug disabled");
+
+  } else if (strcmp(msg, "std_mode") == 0) {
+    // Force switch to standard output mode on demand
+    bool ok = false;
+    for (uint8_t i = 0; i < 3 && !ok; i++) { ok = sensor.switchOutputMode(true); delay(300); }
+    mqttClient.publish(ackTopic.c_str(), ok ? "standard mode enabled" : "switchOutputMode FAILED (unsupported?)");
+
+  } else {
+    mqttClient.publish(ackTopic.c_str(), "unknown command");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// MQTT publish helpers
+// ---------------------------------------------------------------------------
+
+static void publishSensorInfo() {
+  uint16_t major = 0, minor = 0, patch = 0;
+  if (!sensor.readFirmwareVersion(major, minor, patch)) {
+    Serial.println("[Sensor] readFirmwareVersion failed");
+    return;
+  }
+  char buf[128];
+  snprintf(buf, sizeof(buf),
+           "{\"sensor_fw\":\"%u.%u.%u\",\"chip\":\"ESP32-C3\",\"client_id\":\"%s\"}",
+           major, minor, patch, cfg.mqttClientId);
+  mqttClient.publish((String(cfg.mqttTopicPrefix) + "/info").c_str(), buf, true);
+  Serial.printf("[Sensor] Firmware: %u.%u.%u\n", major, minor, patch);
+}
+
+static void publishParams() {
+  LD2410S_GenericParams p{};
+  if (!sensor.readGenericParams(p)) {
+    Serial.println("[Sensor] readGenericParams failed — params not published");
+    return;
+  }
+  char buf[200];
+  snprintf(buf, sizeof(buf),
+           "{\"farthestGate\":%u,\"nearestGate\":%u,\"unmannedDelay\":%u,\"responseSpeed\":%u,\"statusFreq\":%.1f}",
+           p.farthestGate, p.nearestGate, p.unmannedDelay_s, p.responseSpeed, p.statusReportFreq);
+  mqttClient.publish((String(cfg.mqttTopicPrefix) + "/params").c_str(), buf, true);
+  Serial.println("[Sensor] Params published");
+}
+
+static void publishDiscovery() {
+  Serial.println("[MQTT] Publishing Home Assistant discovery...");
+  const String base         = String(cfg.mqttTopicPrefix);
+  const String deviceJson   =
+      "{\"name\":\"LD2410S C3 Mini\",\"identifiers\":[\"ld2410s-c3mini\"],"
+      "\"manufacturer\":\"Hi-Link\",\"model\":\"LD2410S\"}";
+
+  struct DiscoveryDef {
+    const char *component;
+    const char *objectId;
+    const char *name;
+    const char *stateTopic;
+    const char *valueTemplate;
+    const char *deviceClass;
+    const char *unit;
+  } defs[] = {
+    {"binary_sensor", "presence",     "Presence",              "presence",
+      "{{ value_json.presence }}", "occupancy", nullptr},
+    {"sensor",        "distance_cm",  "Target Distance",       "state",
+      "{{ value_json.distance_cm }}", "distance", "cm"},
+    {"sensor",        "target_state", "Target State",          "state",
+      "{{ value_json.target_state }}", nullptr, nullptr},
+    {"sensor",        "sensor_fw",    "Sensor Firmware",       "info",
+      "{{ value_json.sensor_fw }}", nullptr, nullptr},
+    {"sensor",        "rssi",         "WiFi RSSI",             "state",
+      "{{ value_json.rssi }}", "signal_strength", "dBm"},
+    {"sensor",        "uptime_s",     "Uptime",                "state",
+      "{{ value_json.uptime_s }}", "duration", "s"},
+  };
+
+  for (const auto &d : defs) {
+    String topic   = "homeassistant/" + String(d.component) +
+                     "/ld2410s_c3mini/" + d.objectId + "/config";
+    String payload = "{";
+    payload += "\"name\":\"" + String(d.name) + "\",";
+    payload += "\"unique_id\":\"ld2410s_c3mini_" + String(d.objectId) + "\",";
+    payload += "\"state_topic\":\"" + base + "/" + String(d.stateTopic) + "\",";
+    payload += "\"value_template\":\"" + String(d.valueTemplate) + "\",";
+    payload += "\"device\":" + deviceJson;
+    if (d.deviceClass) payload += ",\"device_class\":\"" + String(d.deviceClass) + "\"";
+    if (d.unit)        payload += ",\"unit_of_measurement\":\"" + String(d.unit) + "\"";
+    payload += "}";
+    mqttClient.publish(topic.c_str(), payload.c_str(), true);
+  }
+}
+
+static void publishState() {
+  const bool presence = sensor.presenceDetected();
+  const int  rssi     = WiFi.RSSI();
+  const unsigned long uptime = millis() / 1000;
+
+  char payload[256];
+  snprintf(payload, sizeof(payload),
+           "{\"presence\":%s,\"target_state\":%u,\"distance_cm\":%u,\"rssi\":%d,\"uptime_s\":%lu}",
+           presence ? "true" : "false",
+           sensor.targetState(), sensor.distance_cm(), rssi, uptime);
+
+  Serial.printf("[Sensor] presence=%s state=%u dist=%ucm\n",
+                presence ? "YES" : "no",
+                sensor.targetState(), sensor.distance_cm());
+
+  bool ok1 = mqttClient.publish((String(cfg.mqttTopicPrefix) + "/state").c_str(), payload, true);
+  bool ok2 = mqttClient.publish((String(cfg.mqttTopicPrefix) + "/presence").c_str(),
+                                 presence ? "ON" : "OFF", true);
+  if (!ok1 || !ok2) {
+    Serial.println("[MQTT] publish failed (buffer full or disconnected?)");
+    ledError();
+  } else if (presence) {
+    ledOn();
+  } else {
+    ledOff();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Boot button helper
+// ---------------------------------------------------------------------------
+
+// Returns true if the boot button has been held for BOOT_BUTTON_HOLD_MS.
+static bool bootButtonHeld() {
+  if (digitalRead(BOOT_BUTTON_PIN) != LOW) return false;
+  uint32_t held = 0;
+  while (digitalRead(BOOT_BUTTON_PIN) == LOW && held < BOOT_BUTTON_HOLD_MS) {
+    delay(50);
+    held += 50;
+  }
+  return held >= BOOT_BUTTON_HOLD_MS;
+}
+
+// ---------------------------------------------------------------------------
+// OTA setup
+// ---------------------------------------------------------------------------
+
+static void setupOta() {
+  ArduinoOTA.setHostname(cfg.mqttClientId);
+  if (strlen(cfg.otaPassword) > 0) {
+    ArduinoOTA.setPassword(cfg.otaPassword);
+  }
+  ArduinoOTA.onStart([]() {
+    otaInProgress = true;
+    ledOta();
+    Serial.println("[OTA] Starting update...");
+  });
+  ArduinoOTA.onEnd([]() {
+    otaInProgress = false;
+    Serial.println("\n[OTA] Done — rebooting");
+    ledOk();
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("[OTA] %u%%\r", progress * 100 / total);
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    otaInProgress = false;
+    ledError();
+    Serial.printf("[OTA] Error[%u]\n", error);
+  });
+  ArduinoOTA.begin();
+  Serial.printf("[OTA] Ready — hostname: %s\n", cfg.mqttClientId);
+}
+
+// ---------------------------------------------------------------------------
+// setup / loop
+// ---------------------------------------------------------------------------
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(BOOT_BUTTON_PIN, INPUT_PULLUP);
+
+  cfg = loadConfig();
+
+  // Initialise LED pin as output; LED off during startup until WiFi connects.
+  pinMode(cfg.ledPin, OUTPUT);
+  ledOff();
+
+  // Warn if the LED pin conflicts with the sensor RX pin.
+  if (cfg.sensorRxPin == cfg.ledPin) {
+    Serial.printf("[LED] WARNING: LED pin GPIO%u conflicts with sensor RX pin!\n"
+                  "[LED] Change LED-Pin or Sensor RX Pin in the AP portal.\n",
+                  cfg.ledPin);
+  } else {
+    Serial.printf("[LED] Pin: GPIO%u\n", cfg.ledPin);
+  }
+
+  // Enter AP portal if no config saved or boot button held on startup.
+  if (!hasConfig() || bootButtonHeld()) {
+    runAPPortal(cfg); // never returns — restarts after save
+  }
+
+  connectWiFi();
+  showIpInfo(WiFi.localIP(), cfg, 30000);
+
+  mqttClient.setBufferSize(512);
+  mqttClient.setKeepAlive(10);      // default 15s → 10s
+  mqttClient.setSocketTimeout(5);   // default 15s → 5s faster reconnect detection
+  mqttClient.setServer(cfg.mqttHost, cfg.mqttPort);
+  mqttClient.setCallback(onMqttMessage);
+  connectMqtt();
+
+  setupOta();
+
+  Serial.printf("[Setup] WiFi IP: %s, MQTT: %s:%u\n",
+                WiFi.localIP().toString().c_str(), cfg.mqttHost, cfg.mqttPort);
+
+  // For LOLIN C3 Mini, RX pin is the ESP pin connected to sensor OT1/TX.
+  if (!sensor.begin(Serial1, cfg.sensorRxPin, cfg.sensorTxPin, cfg.sensorBaud)) {
+    Serial.println("[Sensor] begin() FAILED — check RX/TX pins and baud rate");
+    ledError();
+    while (true) {
+      delay(1000);
+    }
+  }
+
+  delay(200);
+  publishSensorInfo();    // read firmware version before streaming starts
+  streamingStarted = startStreamingSafely();
+  publishDiscovery();
+  ledOk();
+}
+
+void loop() {
+  ArduinoOTA.handle();
+  if (otaInProgress) return; // suspend normal operation during OTA
+
+  connectWiFi();
+  connectMqtt();
+  mqttClient.loop();
+
+  sensor.update();
+
+  if (!streamingStarted) {
+    streamingStarted = startStreamingSafely();
+  }
+
+  const unsigned long now      = millis();
+  const bool          presence = sensor.presenceDetected();
+
+  // Publish immediately on presence state change for low latency.
+  const bool changed = (presence != lastPresence);
+  if (changed) {
+    lastPresence = presence;
+    lastPublish  = now;
+    publishState();
+  } else if (now - lastPublish >= cfg.publishIntervalMs) {
+    lastPublish = now;
+    publishState();
+  }
+}

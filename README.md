@@ -8,6 +8,14 @@ Firmware für den ESP32-C3 mit HLK-LD2410S Radar-Sensor. Das Gerät erkennt Pers
 Die Einrichtung erfolgt einmalig über ein integriertes Web-Portal. Danach ist das Gerät vollständig über Home Assistant steuerbar.
 
 ---
+## Gehäuse
+
+- [`doc/gehaeuse.md`](doc/gehaeuse.md) – 3D-gedrucktes Gehäuse, Bilder und Druckdatei  
+  <a href="doc/gehaeuse.md">
+    <img src="images/2.jpeg" width="200">
+  </a>
+
+
 
 ## Kurzanleitung
 

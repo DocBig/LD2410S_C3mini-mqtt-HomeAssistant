@@ -51,6 +51,7 @@ Die Druckdatei für das Gehäuse befindet sich im Repository:
 
 ## Montage
 
+- Halterung (Kugel) einfach mit dem Boden des Gehäuses verkleben
 - Elektronik vorsichtig in das Gehäuse einsetzen
 - USB-C Kabel durch die vorgesehene Öffnung führen
 - Optional verschrauben oder verkleben (je nach Version)

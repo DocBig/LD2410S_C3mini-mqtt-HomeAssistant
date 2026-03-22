@@ -10,7 +10,7 @@ Die Einrichtung erfolgt einmalig über ein integriertes Web-Portal. Danach ist d
 ---
 ## Gehäuse
 
-- [`doc/gehaeuse.md`](doc/gehaeuse.md) – 3D-gedrucktes Gehäuse, Bilder und Druckdatei  
+👉  [`doc/gehaeuse.md`](doc/gehaeuse.md) – 3D-gedrucktes Gehäuse, Bilder und Druckdatei  
   <a href="doc/gehaeuse.md">
     <img src="images/2.jpeg" width="200">
   </a>

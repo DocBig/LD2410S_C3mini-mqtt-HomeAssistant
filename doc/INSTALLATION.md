@@ -157,11 +157,6 @@ Nach dem Neustart verbindet sich das Gerät mit MQTT und erscheint automatisch i
 
 Unter **Einstellungen → Geräte & Dienste → MQTT** taucht das neue Gerät auf.
 
-Eine fertige Dashboard-Vorlage liegt in:
-
-- `doc/HOME_ASSISTANT_DASHBOARD.yaml`
-
-Wie du diese einrichtest, steht in [`doc/HOME_ASSISTANT_DASHBOARD.md`](HOME_ASSISTANT_DASHBOARD.md).
 
 ---
 

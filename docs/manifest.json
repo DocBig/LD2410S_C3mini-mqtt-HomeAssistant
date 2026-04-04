@@ -8,7 +8,7 @@
       "chipFamily": "ESP32-C3",
       "parts": [
         {
-          "path": "https://github.com/DocBig/LD2410S_C3mini-mqtt-HomeAssistant/releases/download/v1.0.0/firmware.bin",
+          "path": "firmware.bin",
           "offset": 0
         }
       ]

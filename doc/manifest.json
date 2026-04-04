@@ -1,0 +1,17 @@
+{
+  "name": "LD2410S C3 Mini MQTT",
+  "version": "1.0.0",
+  "funding_url": "https://github.com/DocBig/LD2410S_C3mini-mqtt-HomeAssistant",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-C3",
+      "parts": [
+        {
+          "path": "https://github.com/DocBig/LD2410S_C3mini-mqtt-HomeAssistant/raw/main/doc/firmware.bin",
+          "offset": 0
+        }
+      ]
+    }
+  ]
+}

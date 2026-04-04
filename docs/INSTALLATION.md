@@ -53,10 +53,10 @@ Die Status-LED der Firmware liegt standardmäßig auf **GPIO 8**.
 
 ### Alternative: Browser-Flashtool (eigene Firmware-Datei)
 
-Die fertige Firmware-Datei liegt nach jedem Build im Projektordner unter:
+Die fertige Firmware-Datei liegt im Projektordner unter:
 
 ```
-bin/firmware.bin
+docs/firmware.bin
 ```
 
 Diese Datei enthält **Bootloader, Partitionstabelle und Applikation** in einem – sie wird direkt an Adresse `0x0` geflasht.

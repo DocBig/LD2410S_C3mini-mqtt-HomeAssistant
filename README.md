@@ -10,8 +10,8 @@ Die Einrichtung erfolgt einmalig über ein integriertes Web-Portal. Danach ist d
 ---
 ## Gehäuse
 
-👉  [`doc/gehaeuse.md`](doc/gehaeuse.md) – 3D-gedrucktes Gehäuse, Bilder und Druckdatei  
-  <a href="doc/gehaeuse.md">
+👉  [`docs/gehaeuse.md`](docs/gehaeuse.md) – 3D-gedrucktes Gehäuse, Bilder und Druckdatei  
+  <a href="docs/gehaeuse.md">
     <img src="images/2.jpeg" width="200">
   </a>
 
@@ -20,7 +20,7 @@ Die Einrichtung erfolgt einmalig über ein integriertes Web-Portal. Danach ist d
 ## Kurzanleitung
 
 1. Sensor und ESP32 verdrahten (siehe [Verdrahtung](#verdrahtung))
-2. Firmware aus `bin/firmware.bin` auf den ESP32 flashen (siehe [`doc/INSTALLATION.md`](doc/INSTALLATION.md))
+2. Firmware aus `bin/firmware.bin` auf den ESP32 flashen (siehe [`docs/INSTALLATION.md`](docs/INSTALLATION.md))
 3. Mit dem WLAN **`LD2410S-Setup`** (Passwort: `ld2410s-setup`) verbinden
 4. Im Browser **`http://192.168.4.1`** öffnen
 5. WLAN- und MQTT-Zugangsdaten eintragen und speichern
@@ -137,8 +137,8 @@ Das ist der einfachste Weg, ein falsch konfiguriertes Gerät ohne PC zurückzuse
 
 ## Dokumentation
 
-- [`doc/INSTALLATION.md`](doc/INSTALLATION.md) – Schritt-für-Schritt: Verdrahtung, Flashen, Ersteinrichtung
-- [`doc/README_PARAMETER.md`](doc/README_PARAMETER.md) – Alle Einstellungen und Parameter erklärt
+- [`docs/INSTALLATION.md`](docs/INSTALLATION.md) – Schritt-für-Schritt: Verdrahtung, Flashen, Ersteinrichtung
+- [`docs/README_PARAMETER.md`](docs/README_PARAMETER.md) – Alle Einstellungen und Parameter erklärt
 
 
 ---

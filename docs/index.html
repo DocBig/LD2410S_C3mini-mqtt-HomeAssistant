@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LD2410S C3 Mini – Web Installer</title>
+
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;600;800&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg:        #0a0e14;
+      --surface:   #111820;
+      --border:    #1e2d3d;
+      --accent:    #00d4ff;
+      --accent2:   #ff6b35;
+      --text:      #c9d4e0;
+      --text-dim:  #556878;
+      --green:     #39ff88;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Exo 2', sans-serif;
+      font-weight: 300;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background-image:
+        linear-gradient(rgba(0,212,255,.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,212,255,.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+
+    body::after {
+      content: '';
+      position: fixed; inset: 0; z-index: 0;
+      background: repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(0,0,0,.15) 2px, rgba(0,0,0,.15) 4px
+      );
+      pointer-events: none;
+    }
+
+    .wrap {
+      position: relative; z-index: 1;
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 3rem 1.5rem 5rem;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 1.2rem;
+      margin-bottom: 3rem;
+    }
+
+    .logo-ring {
+      width: 56px; height: 56px;
+      border: 2px solid var(--accent);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 0 20px rgba(0,212,255,.3), inset 0 0 12px rgba(0,212,255,.1);
+      animation: pulse 3s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%,100% { box-shadow: 0 0 20px rgba(0,212,255,.3), inset 0 0 12px rgba(0,212,255,.1); }
+      50%      { box-shadow: 0 0 35px rgba(0,212,255,.6), inset 0 0 18px rgba(0,212,255,.2); }
+    }
+
+    .logo-ring svg { width: 30px; height: 30px; }
+
+    .title-block h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: .04em; color: #fff; }
+    .title-block h1 span { color: var(--accent); }
+    .title-block p { font-size: .8rem; color: var(--text-dim); font-family: 'Share Tech Mono', monospace; margin-top: .2rem; }
+
+    .statusbar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: .6rem 1rem;
+      display: flex; align-items: center; gap: .7rem;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: .78rem; color: var(--text-dim);
+      margin-bottom: 2rem;
+    }
+
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+    .dot.ok   { background: var(--green);   box-shadow: 0 0 6px var(--green); }
+    .dot.warn { background: var(--accent2); box-shadow: 0 0 6px var(--accent2); }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.8rem 2rem;
+      margin-bottom: 1.4rem;
+      position: relative; overflow: hidden;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: .5;
+    }
+
+    .card-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: .7rem; color: var(--accent);
+      letter-spacing: .15em; text-transform: uppercase; margin-bottom: .8rem;
+    }
+
+    .card h2 { font-size: 1.15rem; font-weight: 600; color: #fff; margin-bottom: .5rem; }
+    .card p  { font-size: .88rem; line-height: 1.65; color: var(--text); }
+
+    .install-zone { margin-top: 1.4rem; display: flex; flex-direction: column; align-items: flex-start; gap: .8rem; }
+
+    esp-web-install-button { --esp-tools-button-color: var(--accent); }
+    esp-web-install-button::part(button) {
+      background: linear-gradient(135deg, #005f73, #00a8cc);
+      color: #fff; border: none; border-radius: 8px;
+      padding: .85rem 2rem;
+      font-family: 'Exo 2', sans-serif; font-size: 1rem; font-weight: 600;
+      letter-spacing: .06em; cursor: pointer;
+      box-shadow: 0 0 20px rgba(0,168,204,.35); transition: box-shadow .2s;
+    }
+    esp-web-install-button::part(button):hover { box-shadow: 0 0 30px rgba(0,212,255,.55); }
+
+    .browser-hint { font-family: 'Share Tech Mono', monospace; font-size: .75rem; color: var(--accent2); display: flex; align-items: center; gap: .5rem; }
+    .browser-hint::before { content: '⚠'; }
+
+    .steps { counter-reset: step; list-style: none; display: flex; flex-direction: column; gap: .9rem; }
+    .steps li { display: flex; gap: 1rem; align-items: flex-start; counter-increment: step; }
+    .steps li::before {
+      content: counter(step);
+      width: 26px; height: 26px; border-radius: 50%;
+      border: 1px solid var(--accent); color: var(--accent);
+      font-family: 'Share Tech Mono', monospace; font-size: .8rem;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: .05rem;
+    }
+    .steps li span { font-size: .88rem; line-height: 1.6; color: var(--text); }
+    .steps li span strong { color: #fff; }
+
+    .info-row { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; margin-top: 1.1rem; }
+    @media (max-width: 500px) { .info-row { grid-template-columns: 1fr; } }
+
+    .info-chip { background: rgba(0,212,255,.05); border: 1px solid var(--border); border-radius: 6px; padding: .7rem .9rem; font-size: .8rem; }
+    .info-chip .ic-label { font-family: 'Share Tech Mono', monospace; font-size: .68rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .1em; margin-bottom: .25rem; }
+    .info-chip .ic-val { color: #fff; font-weight: 600; }
+
+    .wiring { width: 100%; border-collapse: collapse; margin-top: 1rem; font-family: 'Share Tech Mono', monospace; font-size: .8rem; }
+    .wiring thead tr { border-bottom: 1px solid var(--border); }
+    .wiring th { text-align: left; padding: .4rem .6rem; color: var(--text-dim); font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; font-weight: 400; }
+    .wiring td { padding: .45rem .6rem; color: var(--text); border-bottom: 1px solid rgba(30,45,61,.6); }
+    .wiring td:first-child { color: var(--accent2); }
+    .wiring td:last-child  { color: var(--green); }
+
+    .entity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-top: .9rem; }
+    @media (max-width: 500px) { .entity-grid { grid-template-columns: 1fr; } }
+
+    .entity-chip { background: rgba(0,212,255,.04); border: 1px solid var(--border); border-radius: 5px; padding: .5rem .75rem; font-size: .78rem; }
+    .entity-chip .e-type { font-family: 'Share Tech Mono', monospace; font-size: .62rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em; }
+    .entity-chip .e-name { color: #fff; margin-top: .15rem; }
+
+    .ticker { font-family: 'Share Tech Mono', monospace; font-size: .72rem; color: var(--text-dim); margin-top: 1rem; overflow: hidden; white-space: nowrap; }
+    .ticker-inner { display: inline-block; animation: ticker 22s linear infinite; }
+    @keyframes ticker { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+
+    footer { margin-top: 3rem; text-align: center; font-family: 'Share Tech Mono', monospace; font-size: .72rem; color: var(--text-dim); }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo-ring">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round">
+        <circle cx="12" cy="12" r="2" fill="var(--accent)" stroke="none"/>
+        <line x1="12" y1="12" x2="19.5" y2="4.5"/>
+        <path d="M8.2 5.8 A8 8 0 0 1 18.2 15.8" fill="none"/>
+        <path d="M5 3.2 A12 12 0 0 1 20.8 19" fill="none"/>
+      </svg>
+    </div>
+    <div class="title-block">
+      <h1>LD2410S <span>C3 Mini</span></h1>
+      <p>// Web Installer · ESP-Web-Tools · Chrome &amp; Edge only</p>
+    </div>
+  </header>
+
+  <div class="statusbar">
+    <div class="dot" id="statusdot"></div>
+    <span id="statustext">Browser wird geprüft …</span>
+  </div>
+
+  <!-- Flash card -->
+  <div class="card">
+    <div class="card-label">// 01 · Flashen</div>
+    <h2>Firmware installieren</h2>
+    <p>
+      Firmware für den <strong>LOLIN ESP32-C3 Mini</strong> mit <strong>HLK-LD2410S</strong> Radar-Sensor.
+      ESP32 per USB anschließen, dann auf „Install" klicken.
+    </p>
+    <div class="info-row">
+      <div class="info-chip">
+        <div class="ic-label">Board</div>
+        <div class="ic-val">LOLIN ESP32-C3 Mini</div>
+      </div>
+      <div class="info-chip">
+        <div class="ic-label">Sensor</div>
+        <div class="ic-val">HLK-LD2410S Radar</div>
+      </div>
+      <div class="info-chip" style="grid-column: span 2;">
+        <div class="ic-label">Protokoll</div>
+        <div class="ic-val">MQTT · Auto Discovery</div>
+      </div>
+    </div>
+    <div class="install-zone">
+      <esp-web-install-button manifest="manifest.json">
+        <span slot="unsupported">
+          <span class="browser-hint">Web Serial nicht unterstützt. Bitte Chrome oder Edge verwenden.</span>
+        </span>
+      </esp-web-install-button>
+    </div>
+  </div>
+
+  <!-- Wiring card -->
+  <div class="card">
+    <div class="card-label">// 02 · Verdrahtung</div>
+    <h2>LD2410S ↔ LOLIN C3 Mini</h2>
+    <p>Standardbelegung vor dem Flashen herstellen:</p>
+    <table class="wiring">
+      <thead>
+        <tr><th>LD2410S</th><th></th><th>ESP32-C3</th><th>Funktion</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>VCC</td><td>→</td><td>3V3</td><td>Stromversorgung</td></tr>
+        <tr><td>GND</td><td>→</td><td>GND</td><td>Masse</td></tr>
+        <tr><td>OT1 / TX</td><td>→</td><td>GPIO 4</td><td>Sensor → ESP (RX)</td></tr>
+        <tr><td>RX</td><td>→</td><td>GPIO 6</td><td>ESP → Sensor (TX)</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:.8rem; font-size:.78rem; color:var(--text-dim); font-family:'Share Tech Mono',monospace;">
+      ⓘ Status-LED: GPIO 8 &nbsp;·&nbsp; GPIO 7 nicht für Sensor verwenden (interne RGB-LED)
+    </p>
+  </div>
+
+  <!-- Setup steps card -->
+  <div class="card">
+    <div class="card-label">// 03 · Erste Schritte nach dem Flash</div>
+    <h2>Einrichtung</h2>
+    <ol class="steps">
+      <li><span>ESP32 startet einen <strong>WLAN Access Point</strong> namens <strong>LD2410S-Setup</strong> (Passwort: <strong>ld2410s-setup</strong>)</span></li>
+      <li><span>Mit diesem WLAN verbinden, dann im Browser <strong>http://192.168.4.1</strong> öffnen</span></li>
+      <li><span>Im Webportal <strong>WLAN- und MQTT-Zugangsdaten</strong> eintragen und speichern</span></li>
+      <li><span>Home Assistant erkennt alle Entitäten automatisch per <strong>MQTT Auto Discovery</strong></span></li>
+    </ol>
+  </div>
+
+  <!-- HA entities card -->
+  <div class="card">
+    <div class="card-label">// 04 · Home Assistant Entitäten</div>
+    <h2>Automatisch nach Verbindung verfügbar</h2>
+    <p>Messwerte (nur lesbar):</p>
+    <div class="entity-grid">
+      <div class="entity-chip"><div class="e-type">binary_sensor</div><div class="e-name">Presence</div></div>
+      <div class="entity-chip"><div class="e-type">sensor</div><div class="e-name">Target Distance (cm)</div></div>
+      <div class="entity-chip"><div class="e-type">sensor</div><div class="e-name">Target State</div></div>
+      <div class="entity-chip"><div class="e-type">sensor</div><div class="e-name">WiFi RSSI</div></div>
+      <div class="entity-chip"><div class="e-type">sensor</div><div class="e-name">Uptime</div></div>
+      <div class="entity-chip"><div class="e-type">sensor</div><div class="e-name">Sensor Firmware</div></div>
+    </div>
+    <p style="margin-top:1rem;">Einstellbare Parameter:</p>
+    <div class="entity-grid">
+      <div class="entity-chip"><div class="e-type">number</div><div class="e-name">Farthest Gate</div></div>
+      <div class="entity-chip"><div class="e-type">number</div><div class="e-name">Nearest Gate</div></div>
+      <div class="entity-chip"><div class="e-type">number</div><div class="e-name">Unmanned Delay</div></div>
+      <div class="entity-chip"><div class="e-type">number</div><div class="e-name">Response Speed</div></div>
+    </div>
+    <p style="margin-top:1rem;">Schaltflächen:</p>
+    <div class="entity-grid">
+      <div class="entity-chip"><div class="e-type">button</div><div class="e-name">Get Params</div></div>
+      <div class="entity-chip"><div class="e-type">button</div><div class="e-name">Auto Threshold</div></div>
+      <div class="entity-chip"><div class="e-type">button</div><div class="e-name">Sensor Reset</div></div>
+    </div>
+  </div>
+
+  <div class="ticker">
+    <div class="ticker-inner">
+      LD2410S · ESP32-C3 Mini · Radar Präsenzsensor · MQTT · Home Assistant · Auto Discovery · OTA Updates · Mehrere Geräte · Einrichtungsportal &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+      LD2410S · ESP32-C3 Mini · Radar Präsenzsensor · MQTT · Home Assistant · Auto Discovery · OTA Updates · Mehrere Geräte · Einrichtungsportal
+    </div>
+  </div>
+
+  <footer>
+    <p>
+      <a href="https://github.com/DocBig/LD2410S_C3mini-mqtt-HomeAssistant" target="_blank">GitHub Repository</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/DocBig/LD2410S_C3mini-mqtt-HomeAssistant/blob/main/docs/INSTALLATION.md" target="_blank">Installationsdoku</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/DocBig/LD2410S_C3mini-mqtt-HomeAssistant/blob/main/docs/README_PARAMETER.md" target="_blank">Parameter</a>
+      &nbsp;·&nbsp; MIT License
+    </p>
+  </footer>
+
+</div>
+<script>
+  window.addEventListener('DOMContentLoaded', () => {
+    const dot  = document.getElementById('statusdot');
+    const text = document.getElementById('statustext');
+    if ('serial' in navigator) {
+      dot.classList.add('ok');
+      text.textContent = 'Browser unterstützt Web Serial — bereit zum Flashen';
+    } else {
+      dot.classList.add('warn');
+      text.textContent = 'Web Serial nicht verfügbar — bitte Chrome oder Edge verwenden';
+    }
+  });
+</script>
+</body>
+</html>

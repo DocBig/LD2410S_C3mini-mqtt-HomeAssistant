@@ -38,6 +38,21 @@ Die Status-LED der Firmware liegt standardmäßig auf **GPIO 8**.
 
 ## Schritt 2: Firmware flashen
 
+### Empfohlen: Web-Installer (ein Klick, keine Datei nötig)
+
+👉 **https://docbig.github.io/LD2410S_C3mini-mqtt-HomeAssistant/**
+
+1. ESP32 per USB verbinden
+2. Im Browser auf **„Installieren“** klicken und Port auswählen
+3. Warten bis der Flash abgeschlossen ist – Gerät startet automatisch neu
+4. WLAN **LD2410S-Setup** erscheint
+
+> Funktioniert direkt im Browser (Chrome oder Edge) – keine zusätzliche Software nötig.
+
+---
+
+### Alternative: Browser-Flashtool (eigene Firmware-Datei)
+
 Die fertige Firmware-Datei liegt nach jedem Build im Projektordner unter:
 
 ```
@@ -46,29 +61,17 @@ bin/firmware.bin
 
 Diese Datei enthält **Bootloader, Partitionstabelle und Applikation** in einem – sie wird direkt an Adresse `0x0` geflasht.
 
-### Methode A: Browser (empfohlen, keine Software-Installation nötig)
-
-## 🌐 Firmware flashen über ESPConnect
-
 👉 https://thelastoutpostworkshop.github.io/ESPConnect/
 
-
 1. ESP32 per USB verbinden
-
 2. **„Verbinden“** klicken und Port auswählen
-
 3. Links **„Flashtools“** auswählen
-
 4. Unter **„Firmware flashen“**:
-
    * Datei: `firmware.bin`
    * Offset: `0x0`
    * Option **„Gesamten Flash vor dem Schreiben löschen“** anhaken (empfohlen)
-
 5. **„Firmware flashen“** klicken
-
-6. Gerät startet neu
-   WLAN **LD2410S-Setup** erscheint
+6. Gerät startet neu, WLAN **LD2410S-Setup** erscheint
 
 ---
 
@@ -79,19 +82,6 @@ Falls der Flash nicht startet:
 * BOOT gedrückt halten
 * RESET kurz drücken
 * BOOT loslassen
-
----
-
-### alternativ Methode B: Browser 
-
-1. ESP32-C3 per USB mit dem Computer verbinden
-2. Im Browser öffnen: **https://espressif.github.io/esptool-js/**
-3. Auf **„Connect"** klicken und das ESP32-Gerät aus der Liste auswählen
-4. Unter **„Flash Address"** den Wert `0x0` eintragen
-5. Mit **„Choose File"** die Datei `bin/firmware.bin` auswählen
-6. Auf **„Program"** klicken und warten bis „Leaving... Hard resetting..." erscheint
-
-> Falls der ESP32 nicht erkannt wird: Beim Anschließen den BOOT-Button gedrückt halten, um den Flash-Modus zu aktivieren.
 
 ---
 

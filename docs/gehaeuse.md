@@ -36,7 +36,7 @@ Durch das halbtransparente Material bleibt eine Status-LED sichtbar.
 
 Die Druckdatei für das Gehäuse befindet sich im Repository:
 
-👉 [`/doc/gehause.stl`](LD2410S-C3mini.stl)
+👉 [`/docs/gehause.stl`](LD2410S-C3mini.stl)
 
 ---
 
